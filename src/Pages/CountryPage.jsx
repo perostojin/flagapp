@@ -2,11 +2,11 @@ import React, { useEffect, useState } from "react";
 import { Box, Typography, Button, Grid } from "@mui/material";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../Components/Navbar/Navbar";
-import { fetchAllCountries } from "../Utils/api";
 import ArrowLeft from "../assets/arrow-left.svg";
 import ArrowLeftDark from "../assets/arrow-left-dark.svg";
 import { useTheme } from "@mui/material/styles";
-import Flag from "../Components/Flag/Flag"; 
+import Flag from "../Components/Flag/Flag";
+import axios from "axios";
 
 const CountryPage = ({ toggleTheme }) => {
   const { countryName } = useParams();
@@ -16,27 +16,52 @@ const CountryPage = ({ toggleTheme }) => {
   const darkMode = theme.palette.mode === "dark";
 
   const [country, setCountry] = useState(null);
-  const [allCountries, setAllCountries] = useState([]);
+  const [borderCountries, setBorderCountries] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchCountryData = async () => {
       try {
-        const countries = await fetchAllCountries();
-        setAllCountries(countries);
+        setLoading(true);
 
-        const selectedCountry = countries.find(
-          (item) => item.name.common.toLowerCase() === countryName.toLowerCase()
+        // Hämta landet baserat på namnet i URL:en
+        const res = await axios.get(
+          `https://restcountries.com/v3.1/name/${countryName}`,
+          {
+            params: {
+              fullText: true,
+              fields:
+                "name,flags,population,region,capital,tld,currencies,languages,borders,cca3",
+            },
+          }
         );
 
-        if (selectedCountry) {
-          setCountry(selectedCountry);
+        const c = res.data[0];
+        setCountry(c);
+
+        // Hämta grannländer (om det finns några)
+        if (c.borders && c.borders.length > 0) {
+          const bordersRes = await axios.get(
+            "https://restcountries.com/v3.1/alpha",
+            {
+              params: {
+                codes: c.borders.join(","),
+                fields: "name,cca3",
+              },
+            }
+          );
+          setBorderCountries(bordersRes.data);
         } else {
-          setError(true);
+          setBorderCountries([]);
         }
+
+        setError(false);
       } catch (err) {
         console.error("Error fetching country data:", err);
         setError(true);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -60,7 +85,7 @@ const CountryPage = ({ toggleTheme }) => {
     );
   }
 
-  if (!country) {
+  if (loading || !country) {
     return (
       <Box
         sx={{
@@ -78,6 +103,18 @@ const CountryPage = ({ toggleTheme }) => {
   }
 
   const showHomeButton = location.state?.fromBorderCountry || false;
+
+  // Formatera currencies och languages utifrån v3.1-strukturen
+  const currencyText =
+    Object.values(country.currencies || {})
+      .map((c) => (c.symbol ? `${c.name} (${c.symbol})` : c.name))
+      .join(", ") || "N/A";
+
+  const languageText =
+    Object.values(country.languages || {}).join(", ") || "N/A";
+
+  const tldText =
+    country.tld && country.tld.length ? country.tld.join(", ") : "N/A";
 
   return (
     <Box
@@ -131,6 +168,7 @@ const CountryPage = ({ toggleTheme }) => {
             />
             Back
           </Button>
+
           {showHomeButton && (
             <Button
               onClick={() => navigate("/")}
@@ -164,16 +202,17 @@ const CountryPage = ({ toggleTheme }) => {
           <Grid item xs={12} md={5}>
             <Flag
               src={country.flags?.svg || country.flags?.png}
-              alt={`Flag of ${country.name.common}`}
-              variant="countryPage" 
+              alt={`Flag of ${country.name?.common}`}
+              variant="countryPage"
             />
           </Grid>
 
           {/* Information */}
           <Grid item xs={12} md={7}>
             <Typography variant="h4" sx={{ marginBottom: "1rem" }}>
-              {country.name.common}
+              {country.name?.common}
             </Typography>
+
             <Grid container spacing={2}>
               {/* Left Column */}
               <Grid item xs={12} sm={6}>
@@ -188,28 +227,18 @@ const CountryPage = ({ toggleTheme }) => {
                   <strong>Capital:</strong>{" "}
                   {country.capital?.join(", ") || "N/A"}
                 </Typography>
-                <Typography variant="body1">
-                  <strong>Native Name:</strong>{" "}
-                  {country.name.nativeName?.[
-                    Object.keys(country.name.nativeName)[0]
-                  ]?.common || "N/A"}
-                </Typography>
               </Grid>
+
               {/* Right Column */}
               <Grid item xs={12} sm={6}>
                 <Typography variant="body1">
-                  <strong>Top Level Domain:</strong>{" "}
-                  {country.tld?.join(", ") || "N/A"}
+                  <strong>Top Level Domain:</strong> {tldText}
                 </Typography>
                 <Typography variant="body1">
-                  <strong>Currencies:</strong>{" "}
-                  {Object.values(country.currencies || {})
-                    .map((currency) => `${currency.name} (${currency.symbol})`)
-                    .join(", ") || "N/A"}
+                  <strong>Currencies:</strong> {currencyText}
                 </Typography>
                 <Typography variant="body1">
-                  <strong>Languages:</strong>{" "}
-                  {Object.values(country.languages || {}).join(", ") || "N/A"}
+                  <strong>Languages:</strong> {languageText}
                 </Typography>
               </Grid>
             </Grid>
@@ -220,40 +249,38 @@ const CountryPage = ({ toggleTheme }) => {
                 <strong>Border Countries:</strong>
               </Typography>
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                {country.borders?.length
-                  ? country.borders.map((border) => {
-                      const borderCountry = allCountries.find(
-                        (item) => item.cca3 === border
-                      );
-                      return borderCountry ? (
-                        <Button
-                          key={border}
-                          onClick={() =>
-                            navigate(`/country/${borderCountry.name.common}`, {
-                              state: { fromBorderCountry: true },
-                            })
-                          }
-                          sx={{
-                            backgroundColor: "transparent",
-                            color: theme.palette.text.primary,
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            padding: "0.5rem 1rem",
-                            borderRadius: "8px",
-                            boxShadow: "none",
-                            textTransform: "none",
-                            "&:hover": {
-                              transform: "scale(1.05)",
-                              boxShadow: darkMode
-                                ? "0 4px 10px rgba(0, 0, 0, 0.8)"
-                                : "0 4px 10px rgba(0, 0, 0, 0.3)",
-                            },
-                          }}
-                        >
-                          {borderCountry.name.common}
-                        </Button>
-                      ) : null;
-                    })
+                {borderCountries.length > 0
+                  ? borderCountries.map((borderCountry) => (
+                      <Button
+                        key={borderCountry.cca3}
+                        onClick={() =>
+                          navigate(`/country/${borderCountry.name.common}`, {
+                            state: { fromBorderCountry: true },
+                          })
+                        }
+                        sx={{
+                          backgroundColor: "transparent",
+                          color: theme.palette.text.primary,
+                          fontSize: "0.875rem",
+                          fontWeight: 600,
+                          padding: "0.5rem 1rem",
+                          borderRadius: "8px",
+                          boxShadow: "none",
+                          textTransform: "none",
+                          border: `1px solid ${
+                            darkMode ? "rgba(255,255,255,0.2)" : "#ccc"
+                          }`,
+                          "&:hover": {
+                            transform: "scale(1.05)",
+                            boxShadow: darkMode
+                              ? "0 4px 10px rgba(0, 0, 0, 0.8)"
+                              : "0 4px 10px rgba(0, 0, 0, 0.3)",
+                          },
+                        }}
+                      >
+                        {borderCountry.name.common}
+                      </Button>
+                    ))
                   : "None"}
               </Box>
             </Box>
