@@ -22,6 +22,7 @@ function Homepage({ toggleTheme }) {
       try {
         setLoading(true);
         const data = await fetchAllCountries();
+        console.log("Countries from API:", data); // debug, kan tas bort sen
         setCountries(data);
         setLoading(false);
       } catch (err) {
@@ -34,15 +35,18 @@ function Homepage({ toggleTheme }) {
     getCountries();
   }, []);
 
+  // Nu använder vi de mappade fälten: name, flag, population, region, capital
   const filteredCountries = [...countries]
-    .sort((a, b) => a.name.common.localeCompare(b.name.common))
+    .sort((a, b) => a.name.localeCompare(b.name))
     .filter((country) => {
-      const matchesSearch = country.name.common
+      const matchesSearch = country.name
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
+
       const matchesRegion = selectedRegion
         ? country.region === selectedRegion
         : true;
+
       return matchesSearch && matchesRegion;
     });
 
@@ -152,15 +156,15 @@ function Homepage({ toggleTheme }) {
                 sm={6}
                 md={4}
                 lg={3}
-                key={country.name.common}
-                sx={{ height: "auto", }}
+                key={country.name}
+                sx={{ height: "auto" }}
               >
                 <CountryCard
-                  flag={country.flags.svg}
-                  name={country.name.common}
+                  flag={country.flag}
+                  name={country.name}
                   population={country.population}
                   region={country.region}
-                  capital={country.capital ? country.capital[0] : "N/A"}
+                  capital={country.capital || "N/A"}
                   darkMode={darkMode}
                 />
               </Grid>
